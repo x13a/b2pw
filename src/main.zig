@@ -55,10 +55,10 @@ fn b2pw(reader: anytype, writer: anytype) !void {
     var b2 = Blake2b256.init(.{});
     var buffer: [Blake2b256.digest_length]u8 = undefined;
     var i = try reader.readAll(&buffer);
-    b2.update(&buffer);
     while (i == buffer.len) : (i = try reader.readAll(&buffer)) {
         b2.update(&buffer);
     }
+    b2.update(&buffer);
     b2.final(&buffer);
     const map = [_]u8{
         'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
