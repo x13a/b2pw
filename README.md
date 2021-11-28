@@ -17,10 +17,14 @@ $ brew install x13a/tap/b2pw
 ## Usage
 
 ```text
-b2pw [-h|V]
+b2pw [-h|V] [-l NUM] [-a STR] [-k STR]
 
 [-h] * Print help and exit
 [-V] * Print version and exit
+
+[-l] * Length of password (default: 32)
+[-a] * Alphabet (default: abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789)
+[-k] * Key (default: null)
 ```
 
 ## Example
@@ -28,11 +32,11 @@ b2pw [-h|V]
 ```sh
 ~
 ❯ echo -n "test1" | b2pw
-VhVsUo7wevh7ZjEHRxrGrOgo0iKJ7HSL
+F8yzwWXFRDglUv1EETsT4tLe4ItUZ8Qd
 ~
 ❯ echo -n "test1" | b2pw
-VhVsUo7wevh7ZjEHRxrGrOgo0iKJ7HSL
+F8yzwWXFRDglUv1EETsT4tLe4ItUZ8Qd
 ~
 ❯ echo -n "test2" | b2pw
-PrJEtKpcPLjjdcbvAw5Gvo9IDsZBOSqr
+6EV9DkcE2jMbLRw02aNdRFoXtMkGFyTm
 ```
