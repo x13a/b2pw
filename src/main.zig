@@ -4,7 +4,8 @@ const io = std.io;
 const print = std.debug.print;
 
 const Blake2b = std.crypto.hash.blake2.Blake2b512;
-const VERSION: []const u8 = "0.2.0";
+const Error = error.Invalid;
+const VERSION: []const u8 = "0.2.1";
 
 const Exit = enum(u8) {
     success = 0,
@@ -17,6 +18,7 @@ const Flag = struct {
     const length: []const u8 = "l";
     const alphabet: []const u8 = "a";
     const key: []const u8 = "k";
+    const chars: []const u8 = "c";
 };
 
 fn exit(code: Exit) noreturn {
@@ -27,11 +29,12 @@ const Opts = struct {
     length: usize = 32,
     alphabet: []const u8 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     key: ?[]const u8 = null,
+    chars: []const u8 = "",
 };
 
 fn getOpts(allocator: *mem.Allocator) !Opts {
     var args = std.process.args();
-    var prog_name = try (args.next(allocator) orelse return error.Invalid);
+    const prog_name = try (args.next(allocator) orelse return Error);
     defer allocator.free(prog_name);
     var opts = Opts{};
     while (args.next(allocator)) |arg_or_err| {
@@ -49,23 +52,26 @@ fn getOpts(allocator: *mem.Allocator) !Opts {
             print("{s}", .{VERSION});
             exit(.success);
         } else if (mem.eql(u8, flag, Flag.length)) {
-            const length_str = try (args.next(allocator) orelse return error.Invalid);
+            const length_str = try (args.next(allocator) orelse return Error);
             defer allocator.free(length_str);
             opts.length = try std.fmt.parseInt(usize, length_str, 10);
         } else if (mem.eql(u8, flag, Flag.alphabet)) {
-            opts.alphabet = try (args.next(allocator) orelse return error.Invalid);
+            opts.alphabet = try (args.next(allocator) orelse return Error);
         } else if (mem.eql(u8, flag, Flag.key)) {
-            opts.key = try (args.next(allocator) orelse return error.Invalid);
+            opts.key = try (args.next(allocator) orelse return Error);
+        } else if (mem.eql(u8, flag, Flag.chars)) {
+            opts.chars = try (args.next(allocator) orelse return Error);
         } else {
-            return error.Invalid;
+            printUsage(prog_name);
+            exit(.usage);
         }
     }
     if (opts.length == 0 or opts.length > Blake2b.digest_length) {
         print("length must be greater than zero and max {d}", .{Blake2b.digest_length});
         exit(.usage);
     }
-    if (opts.alphabet.len == 0 or opts.alphabet.len > 256) {
-        print("alphabet must be greater than zero and max 256", .{});
+    if (opts.alphabet.len == 0 or opts.alphabet.len + opts.chars.len > 256) {
+        print("alphabet must be greater than zero and alphabet plus chars must be less than 256", .{});
         exit(.usage);
     }
     if (opts.key) |v| {
@@ -79,7 +85,7 @@ fn getOpts(allocator: *mem.Allocator) !Opts {
 
 fn printUsage(exe: []const u8) void {
     const usage =
-        \\{[exe]s} [-{[h]s}|{[V]s}] [-{[l]s} NUM] [-{[a]s} STR] [-{[k]s} STR]
+        \\{[exe]s} [-{[h]s}{[V]s}] [-{[l]s} NUM] [-{[a]s} STR] [-{[k]s} STR] [-{[c]s} STR]
         \\
         \\[-{[h]s}] * Print help and exit
         \\[-{[V]s}] * Print version and exit
@@ -87,6 +93,7 @@ fn printUsage(exe: []const u8) void {
         \\[-{[l]s}] * Length of password (default: 32)
         \\[-{[a]s}] * Alphabet (default: abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789)
         \\[-{[k]s}] * Key (default: null)
+        \\[-{[c]s}] * Additional chars (default: "")
     ;
     print(usage, .{
         .exe = std.fs.path.basename(exe),
@@ -95,6 +102,7 @@ fn printUsage(exe: []const u8) void {
         .l = Flag.length,
         .a = Flag.alphabet,
         .k = Flag.key,
+        .c = Flag.chars,
     });
 }
 
@@ -111,8 +119,12 @@ fn b2pw(reader: anytype, writer: anytype, opts: Opts) !void {
     for (opts.alphabet) |v, j| {
         alphabet[j] = v;
     }
+    for (opts.chars) |v, j| {
+        alphabet[j + opts.alphabet.len] = v;
+    }
+    const alphabet_len = opts.alphabet.len + opts.chars.len;
     for (buffer[0..opts.length]) |v| {
-        try writer.writeByte(alphabet[v % opts.alphabet.len]);
+        try writer.writeByte(alphabet[v % alphabet_len]);
     }
 }
 
@@ -120,8 +132,8 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const opts = try getOpts(&arena.allocator);
-    var stdin = io.getStdIn();
-    var stdout = io.getStdOut();
+    const stdin = io.getStdIn();
+    const stdout = io.getStdOut();
     try b2pw(stdin.reader(), stdout.writer(), opts);
 }
 
@@ -138,7 +150,7 @@ test "b2pw" {
         var buffer: [Blake2b.digest_length]u8 = undefined;
         const reader = io.fixedBufferStream(v.input).reader();
         const writer = io.fixedBufferStream(&buffer).writer();
-        const opts = Opts{};
+        const opts = Opts{ .length = v.output.len };
         try b2pw(reader, writer, opts);
         try std.testing.expectEqualSlices(u8, v.output, buffer[0..opts.length]);
     }
