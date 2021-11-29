@@ -5,7 +5,7 @@ const print = std.debug.print;
 
 const Blake2b = std.crypto.hash.blake2.Blake2b512;
 const Error = error.Invalid;
-const VERSION: []const u8 = "0.2.1";
+const VERSION: []const u8 = "0.3.0";
 
 const Exit = enum(u8) {
     success = 0,
@@ -19,6 +19,7 @@ const Flag = struct {
     const alphabet: []const u8 = "a";
     const key: []const u8 = "k";
     const chars: []const u8 = "c";
+    const num_bytes: []const u8 = "n";
 };
 
 fn exit(code: Exit) noreturn {
@@ -30,6 +31,7 @@ const Opts = struct {
     alphabet: []const u8 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     key: ?[]const u8 = null,
     chars: []const u8 = "",
+    num_bytes: usize = 0,
 };
 
 fn getOpts(allocator: *mem.Allocator) !Opts {
@@ -61,6 +63,10 @@ fn getOpts(allocator: *mem.Allocator) !Opts {
             opts.key = try (args.next(allocator) orelse return Error);
         } else if (mem.eql(u8, flag, Flag.chars)) {
             opts.chars = try (args.next(allocator) orelse return Error);
+        } else if (mem.eql(u8, flag, Flag.num_bytes)) {
+            const num_bytes_str = try (args.next(allocator) orelse return Error);
+            defer allocator.free(num_bytes_str);
+            opts.num_bytes = try std.fmt.parseInt(usize, num_bytes_str, 10);
         } else {
             printUsage(prog_name);
             exit(.usage);
@@ -85,7 +91,7 @@ fn getOpts(allocator: *mem.Allocator) !Opts {
 
 fn printUsage(exe: []const u8) void {
     const usage =
-        \\{[exe]s} [-{[h]s}{[V]s}] [-{[l]s} NUM] [-{[a]s} STR] [-{[k]s} STR] [-{[c]s} STR]
+        \\{[exe]s} [-{[h]s}{[V]s}] [-{[l]s} NUM] [-{[a]s} STR] [-{[k]s} STR] [-{[c]s} STR] [-{[n]s} NUM]
         \\
         \\[-{[h]s}] * Print help and exit
         \\[-{[V]s}] * Print version and exit
@@ -94,6 +100,7 @@ fn printUsage(exe: []const u8) void {
         \\[-{[a]s}] * Alphabet (default: abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789)
         \\[-{[k]s}] * Key (default: null)
         \\[-{[c]s}] * Additional chars (default: "")
+        \\[-{[n]s}] * Number of bytes to read (default: 0 = all)
     ;
     print(usage, .{
         .exe = std.fs.path.basename(exe),
@@ -103,24 +110,37 @@ fn printUsage(exe: []const u8) void {
         .a = Flag.alphabet,
         .k = Flag.key,
         .c = Flag.chars,
+        .n = Flag.num_bytes,
     });
 }
 
 fn b2pw(reader: anytype, writer: anytype, opts: Opts) !void {
-    var b2 = Blake2b.init(.{ .expected_out_bits = opts.length * 8, .key = opts.key });
-    var buffer: [Blake2b.digest_length]u8 = undefined;
-    var i = try reader.readAll(&buffer);
-    while (i == buffer.len) : (i = try reader.readAll(&buffer)) {
-        b2.update(&buffer);
+    var b2 = Blake2b.init(.{ .expected_out_bits = opts.length << 3, .key = opts.key });
+    var buffer: [1 << 8]u8 = undefined;
+    std.debug.assert(buffer.len >= Blake2b.digest_length);
+    var buffer_slice: []u8 = buffer[0..];
+    var num_bytes = opts.num_bytes;
+    var i: usize = 0;
+    while (true) {
+        if (num_bytes != 0) {
+            num_bytes -= i;
+            if (num_bytes < buffer_slice.len) {
+                buffer_slice = buffer_slice[0..num_bytes];
+            }
+        }
+        i = try reader.readAll(buffer_slice);
+        if (i == 0) {
+            break;
+        }
+        b2.update(buffer_slice[0..i]);
     }
-    b2.update(&buffer);
-    b2.final(&buffer);
+    b2.final(buffer[0..Blake2b.digest_length]);
     var alphabet: [256]u8 = undefined;
-    for (opts.alphabet) |v, j| {
-        alphabet[j] = v;
+    for (opts.alphabet) |c, j| {
+        alphabet[j] = c;
     }
-    for (opts.chars) |v, j| {
-        alphabet[j + opts.alphabet.len] = v;
+    for (opts.chars) |c, j| {
+        alphabet[j + opts.alphabet.len] = c;
     }
     const alphabet_len = opts.alphabet.len + opts.chars.len;
     for (buffer[0..opts.length]) |v| {
@@ -143,8 +163,8 @@ test "b2pw" {
         output: []const u8,
     };
     const test_vectors = [_]TestVector{
-        .{ .input = "test1", .output = "F8yzwWXFRDglUv1EETsT4tLe4ItUZ8Qd" },
-        .{ .input = "test2", .output = "6EV9DkcE2jMbLRw02aNdRFoXtMkGFyTm" },
+        .{ .input = "test1", .output = "RQ3sDNrPzzkiVLYsqRzsnQTkgbK4cm0U" },
+        .{ .input = "test2", .output = "KS4qquoEFhN4XJiECDcQZxJXca6ZrKCN" },
     };
     for (test_vectors) |v| {
         var buffer: [Blake2b.digest_length]u8 = undefined;
