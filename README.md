@@ -2,6 +2,10 @@
 
 Convert bytes to password.
 
+Main purpose is to convert files to passwords. You can take any file and convert it 
+to password up to 64 chars long. First we make hash of it using `blake2b`, than
+map each result byte to our alphabet. On the same file you always get the same password.
+
 ## Installation
 
 ```sh
