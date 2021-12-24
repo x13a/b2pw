@@ -5,7 +5,7 @@ const print = std.debug.print;
 
 const Blake2b = std.crypto.hash.blake2.Blake2b512;
 const Error = error.Invalid;
-const VERSION: []const u8 = "0.3.0";
+const VERSION: []const u8 = "0.3.1";
 
 const Exit = enum(u8) {
     success = 0,
@@ -34,7 +34,7 @@ const Opts = struct {
     num_bytes: usize = 0,
 };
 
-fn getOpts(allocator: *mem.Allocator) !Opts {
+fn getOpts(allocator: mem.Allocator) !Opts {
     var args = std.process.args();
     const prog_name = try (args.next(allocator) orelse return Error);
     defer allocator.free(prog_name);
@@ -151,7 +151,7 @@ fn b2pw(reader: anytype, writer: anytype, opts: Opts) !void {
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const opts = try getOpts(&arena.allocator);
+    const opts = try getOpts(arena.allocator());
     const stdin = io.getStdIn();
     const stdout = io.getStdOut();
     try b2pw(stdin.reader(), stdout.writer(), opts);
